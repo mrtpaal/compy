@@ -95,11 +95,51 @@ def resolve(header: list[str], spec: dict, kind: str, fname: str) -> dict[str, s
                 f"  Faili päised: {header}\n  Lisa sobiv nimi pipeline/config.py COLS['{kind}']['{canon}'].")
         out[canon] = hit
     log.info("%s veerud: %s", fname, {k: v for k, v in out.items() if v})
+    if any(v is None for v in out.values()):
+        log.info("%s kõik päised: %s", fname, header)
     return out
 
 
 def q(ident: str) -> str:
     return '"' + ident.replace('"', '""') + '"'
+
+
+_ROMAN = {"i": 1, "ii": 2, "iii": 3, "iv": 4}
+_TAX_METRICS = [("riiklikud", "riiklik"), ("toojou", "toojou"), ("kaive", "kaive"), ("tootajad", "tootaja")]
+
+
+def load_emta(con, path: Path, rank: int, append: bool):
+    """EMTA fail kas pikas (rida = kvartal) või laias (rida = aasta, veerud '… I kv' … '… IV kv') vormis."""
+    delim, header = sniff(path)
+    spec = {k: v for k, v in COLS["emta"].items() if k not in dict(_TAX_METRICS)}
+    m = resolve(header, spec, "emta", path.name)
+    wide: dict[int, dict[str, str]] = {}
+    for h in header:
+        n = norm(h)
+        qm = re.search(r"(?:^|_)(iv|iii|ii|i|[1-4])_?kv(?:artal)?$", n)
+        if not qm:
+            continue
+        qn = _ROMAN.get(qm.group(1)) or int(qm.group(1))
+        for canon, frag in _TAX_METRICS:
+            if frag in n:
+                wide.setdefault(qn, {})[canon] = h
+    src = (f"read_csv({repr(str(path))}, delim={repr(delim)}, header=true, all_varchar=true, "
+           f"quote='\"', escape='\"', null_padding=true, ignore_errors=true, sample_size=-1)")
+    base = ", ".join(f"{q(c)} AS {k}" if c else f"NULL::VARCHAR AS {k}" for k, c in m.items() if k not in ("kvartal",))
+    if wide:
+        log.info("%s: lai vorming, kvartalid %s", path.name, sorted(wide))
+        parts = []
+        for qn, cols in sorted(wide.items()):
+            mets = ", ".join(f"{q(cols[c])} AS {c}" if c in cols else f"NULL::VARCHAR AS {c}" for c, _ in _TAX_METRICS)
+            parts.append(f"SELECT {base}, '{qn}' AS kvartal, {mets}, {rank}::INTEGER AS allika_jrk FROM {src}")
+        sql = " UNION ALL ".join(parts)
+    else:
+        full = resolve(header, {**spec, **{c: COLS["emta"][c] for c, _ in _TAX_METRICS}}, "emta", path.name)
+        mets = ", ".join(f"{q(full[c])} AS {c}" if full[c] else f"NULL::VARCHAR AS {c}" for c, _ in _TAX_METRICS)
+        kv_ = f"{q(m['kvartal'])}" if m.get("kvartal") else "NULL::VARCHAR"
+        sql = f"SELECT {base}, {kv_} AS kvartal, {mets}, {rank}::INTEGER AS allika_jrk FROM {src}"
+    verb = "INSERT INTO src_tax BY NAME" if append else "CREATE OR REPLACE TABLE src_tax AS"
+    con.execute(f"{verb} {sql}")
 
 
 def load_csv(con, path: Path, kind: str, table: str, extra_cols: dict | None = None, append=False):
@@ -183,6 +223,8 @@ def build(files: dict[str, list[dict]], raw_dir: Path, out_dir: Path) -> dict:
     missing = sorted(set(CANONICAL_FIELDS) - {c for _, c in mapping if c})
     if missing:
         log.warning("Ükski element ei kaardistunud väljadele: %s", missing)
+        log.warning("Kaardistamata elemendid (sagedasemad): %s",
+                    [e for e, c in mapping if not c][:40])
     stats["puuduvad_valjad"] = missing
 
     pref = "TRUE" if PREFER_CONSOLIDATED else "FALSE"
@@ -232,9 +274,11 @@ def build(files: dict[str, list[dict]], raw_dir: Path, out_dir: Path) -> dict:
     first = True
     for rank, key in enumerate(["emta_varasem", "emta_jooksev"]):
         for item in files.get(key, []):
-            load_csv(con, csvpath(item), "emta", "src_tax",
-                     extra_cols={"allika_jrk": f"{rank}::INTEGER"}, append=not first)
+            load_emta(con, csvpath(item), rank, append=not first)
             first = False
+    # tühjad kvartalid (nt jooksva aasta veel avaldamata kvartalid laias vormingus) välja
+    con.execute("""DELETE FROM src_tax WHERE clean(riiklikud) IS NULL AND clean(toojou) IS NULL
+                   AND clean(kaive) IS NULL AND clean(tootajad) IS NULL""")
     con.execute("""
       CREATE TABLE tax_q AS SELECT * EXCLUDE (rn) FROM (
         SELECT kood(kood) AS kood,
