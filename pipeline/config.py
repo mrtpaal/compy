@@ -94,9 +94,6 @@ COLS = {
 # 3. Aruande elementide kaardistus kanoonilisteks näitajateks.
 #    Regex rakendatakse normaliseeritud elemendinimele; esimene vaste võidab,
 #    seega spetsiifilisemad mustrid enne üldisemaid.
-#    Toetab nii eestikeelseid silte kui ka taksonoomia koode (nt "CurrentAssets").
-#    Kaardistamata elemendid kirjutatakse meta.json-i -> näed kohe, kui RIK
-#    on midagi ümber nimetanud.
 # --------------------------------------------------------------------------
 ELEMENT_MAP = [
     ("raha",                    [r"^raha$", r"^raha_ja_raha_ekvivalendid$", r"^cash(andcashequivalents)?$"]),
