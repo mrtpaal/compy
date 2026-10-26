@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="et">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compy – ettevõtete finantsnäitajad</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#">Compy</a>
+  <div class="search">
+    <label for="q" class="sr">Otsi ettevõtet</label>
+    <input id="q" type="search" autocomplete="off" spellcheck="false"
+           placeholder="Ettevõtte nimi või registrikood">
+    <ul id="results" role="listbox" hidden></ul>
+  </div>
+  <p id="status" class="status">Laen andmeid…</p>
+</header>
+
+<main id="view">
+  <section class="empty">
+    <p>Otsi ettevõtet nime või registrikoodi järgi. Näitajad põhinevad äriregistrisse esitatud
+       majandusaasta aruannetel ning Maksu- ja Tolliameti avaldatud kvartaliandmetel.</p>
+  </section>
+</main>
+
+<template id="company-tpl">
+  <article class="company">
+    <h1 class="cname"></h1>
+    <dl class="facts"></dl>
+
+    <section>
+      <h2>Põhinäitajad majandusaasta aruannete põhjal</h2>
+      <div class="scroll"><table class="ratios"></table></div>
+      <p class="note">Keskmised (ROE, ROA, varade käibevus) arvutatakse aasta alguse ja lõpu keskmisena, kui eelmise
+        aasta aruanne on olemas. Kulud on võetud absoluutväärtusena. Aruanded esitatakse kuni 6 kuud pärast
+        majandusaasta lõppu, seega viimane aasta võib veel puududa.</p>
+    </section>
+
+    <section class="peers">
+      <h2>Võrdlus tegevusalaga</h2>
+      <div class="peer-ctl">
+        <label>Aasta <select class="p-year"></select></label>
+        <label>Võrdlusgrupp <select class="p-level"></select></label>
+      </div>
+      <div class="scroll"><table class="ptable"></table></div>
+      <p class="note">Võrdlusgrupp on põhitegevusala (EMTAK) järgi, mis on võetud aruande müügitulu jaotusest.
+        Arvesse lähevad ettevõtted, mille müügitulu on vähemalt 50 000 €. Kast näitab grupi keskmist poolt
+        (alumine kuni ülemine kvartiil), kriips mediaani ja täpp selle ettevõtte väärtust.</p>
+    </section>
+
+    <section class="charts">
+      <figure><figcaption>Müügitulu ja EBITDA, tuh €</figcaption><div class="cbox"><canvas class="c-fin"></canvas></div></figure>
+      <figure><figcaption>Tasutud riiklikud maksud ja tööjõumaksud kvartalis, tuh €</figcaption><div class="cbox"><canvas class="c-tax"></canvas></div></figure>
+    </section>
+
+    <section>
+      <h2>Maksu- ja Tolliameti kvartaliandmed</h2>
+      <div class="scroll"><table class="taxes"></table></div>
+      <p class="note">Käive on käibedeklaratsiooni ridade 1–3 summa (sh pöördmaksustatavad ostud) ja on nihkes:
+        kvartali käive kajastab eelnenud kolme kuu deklaratsioone. Seetõttu ei ole see majandusaasta aruande
+        müügituluga üks-ühele võrreldav.</p>
+    </section>
+  </article>
+</template>
+
+<footer id="foot"></footer>
+<script type="module">
+  await import("./source-duckdb.js");
+  await import("./core.js");
+</script>
+</body>
+</html>
