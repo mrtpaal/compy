@@ -1,0 +1,88 @@
+name: Andmete uuendamine
+
+on:
+  schedule:
+    - cron: "15 4 * * 1"          # iga esmaspäev (püüab kinni RIK-i igakuise uuenduse)
+    - cron: "15 4 3,11,12 * *"    # kuu algus (RIK) ja 11.–12. kuupäev (EMTA kvartaliandmed 10. kuupäeval)
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Ehita ka siis, kui allikad pole muutunud"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["site/**", "pipeline/**", ".github/workflows/**"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      changed: ${{ steps.run.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Eelmise ehituse meta (muutuste tuvastuseks)
+        run: curl -fsSL "${{ steps.pages.outputs.base_url }}/data/meta.json" -o prev_meta.json || echo '{}' > prev_meta.json
+
+      - name: Lae alla ja ehita
+        id: run
+        run: >
+          python -m pipeline.run --out site/data --previous prev_meta.json
+          ${{ (github.event_name == 'push' || inputs.force) && '--force' || '' }}
+
+      - if: steps.run.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  # Avalikus repos lülitab GitHub ajastatud töövood välja, kui 60 päeva jooksul pole repos tegevust.
+  # See samm teeb vajadusel (kui viimane commit on vanem kui 30 päeva) väikese oleku-commiti.
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hoia ajakava aktiivsena
+        run: |
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt $(( 30*24*3600 )) ]; then
+            mkdir -p status
+            date -u +%Y-%m-%dT%H:%M:%SZ > status/viimane_kaivitus.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add status && git commit -m "Ajastatud käivitus (keepalive)" && git push
+          else
+            echo "Repos on viimase 30 päeva jooksul tegevust olnud – commit pole vajalik."
+          fi
