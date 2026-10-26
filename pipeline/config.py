@@ -94,27 +94,36 @@ COLS = {
 # 3. Aruande elementide kaardistus kanoonilisteks näitajateks.
 #    Regex rakendatakse normaliseeritud elemendinimele; esimene vaste võidab,
 #    seega spetsiifilisemad mustrid enne üldisemaid.
+#    Toetab nii eestikeelseid silte kui ka taksonoomia koode (nt "CurrentAssets").
+#    Kaardistamata elemendid kirjutatakse meta.json-i -> näed kohe, kui RIK
+#    on midagi ümber nimetanud.
 # --------------------------------------------------------------------------
 ELEMENT_MAP = [
-    ("raha",                    [r"^raha$", r"^raha_ja_raha_ekvivalendid$", r"^cash(andcashequivalents)?$"]),
-    ("kaibevara",               [r"^kaibevara(d)?(_kokku)?$", r"^currentassets$"]),
-    ("pohivara",                [r"^pohivara(d)?(_kokku)?$", r"^noncurrentassets$"]),
-    ("varad",                   [r"^varad(_kokku)?$", r"^assets$"]),
-    ("lyhiajalised_kohustised", [r"^luhiajalised_kohustised(_kokku)?$", r"^currentliabilities$"]),
-    ("pikaajalised_kohustised", [r"^pikaajalised_kohustised(_kokku)?$", r"^noncurrentliabilities$"]),
-    ("omakapital",              [r"^omakapital(_kokku)?$", r"^equity$"]),
-    ("myygitulu",               [r"^muugitulu$", r"^myygitulu$", r"^revenue$"]),
-    ("tulu_ettevotlusest",      [r"tulu_ettevotlus", r"ettevotlustulu", r"revenuefrombusiness"]),
-    ("toojoukulud",             [r"^toojoukulud$", r"^laborexpense$"]),
-    ("kulum",                   [r"^pohivara(de)?_kulum", r"kulum_ja_vaartuse_langus", r"^depreciationandimpairment"]),
-    ("arikasum",                [r"^arikasum", r"^ari_kasum", r"arikasum", r"pohitegevuse_kasum", r"arikahjum",
-                                 r"operatingprofit"]),
-    ("kasum_enne_tm",           [r"^kasum_kahjum_enne_tulumaksustamist$", r"^kasum_enne_tulumaksustamist$",
-                                 r"^totalprofitlossbeforetax$", r"^profitlossbeforetax$"]),
-    ("puhaskasum",              [r"^aruande_?aasta_kasum(_kahjum)?$", r"^totalannualperiodprofitloss$",
-                                 r"^annualperiodprofitloss$"]),
-    ("jaotamata_kasum",         [r"^eelmiste_perioodide_jaotamata_kasum(_kahjum)?$", r"^retainedearningsloss$"]),
-    ("tootajate_arv",           [r"tootajate_arv", r"taistooajale", r"numberofemployees"]),
+    # RIK failis on elemendid Eesti GAAP XBRL taksonoomia koodidena (nt "TotalProfitLoss").
+    # Lõpuliide "Consolidated" eemaldatakse enne sobitamist ja märgitakse konsolideeritud andmeks.
+    # Mustri järjekord loendis = prioriteet, kui aruandes on samale väljale mitu elementi.
+    ("raha",                    [r"^cashandcashequivalents$", r"^cash$", r"^raha$"]),
+    ("kaibevara",               [r"^currentassets$", r"^kaibevara(d)?(_kokku)?$"]),
+    ("pohivara",                [r"^noncurrentassets$", r"^pohivara(d)?(_kokku)?$"]),
+    ("varad",                   [r"^assets$", r"^varad(_kokku)?$"]),
+    ("lyhiajalised_kohustised", [r"^currentliabilities$", r"^luhiajalised_kohustised(_kokku)?$"]),
+    ("pikaajalised_kohustised", [r"^noncurrentliabilities$", r"^pikaajalised_kohustised(_kokku)?$"]),
+    # MTÜ/SA: NetAssets = netovara (omakapitali analoog)
+    ("omakapital",              [r"^equity$", r"^netassets$", r"^omakapital(_kokku)?$"]),
+    ("myygitulu",               [r"^revenue$", r"^muugitulu$"]),
+    # MTÜ/SA: BusinessIncome = tulu ettevõtlusest
+    ("tulu_ettevotlusest",      [r"^businessincome$", r"tulu_ettevotlus"]),
+    ("toojoukulud",             [r"^laborexpense$", r"^employeeexpense$", r"^toojoukulud$"]),
+    ("kulum",                   [r"^depreciationandimpairmentlossreversal$", r"^depreciationandimpairmentlossreversalneg$",
+                                 r"^pohivara(de)?_kulum", r"kulum_ja_vaartuse_langus"]),
+    # TotalProfitLoss = ärikasum (-kahjum); MTÜ/SA: põhitegevuse tulem
+    ("arikasum",                [r"^totalprofitloss$", r"^surplusdeficitfromoperatingactivities$", r"^arikasum"]),
+    ("kasum_enne_tm",           [r"^totalprofitlossbeforetax$", r"^kasum_kahjum_enne_tulumaksustamist$"]),
+    # TotalAnnualPeriodProfitLoss = aruandeaasta kasum; MTÜ/SA: aruandeaasta tulem
+    ("puhaskasum",              [r"^totalannualperiodprofitloss$", r"^netsurplusdeficitforperiod$",
+                                 r"^aruande_?aasta_kasum(_kahjum)?$"]),
+    ("jaotamata_kasum",         [r"^retainedearningsloss$", r"^eelmiste_perioodide_jaotamata_kasum(_kahjum)?$"]),
+    ("tootajate_arv",           [r"^averagenumberofemployeesinfulltimeequivalentunits$", r"tootajate_arv"]),
 ]
 
 CANONICAL_FIELDS = [name for name, _ in ELEMENT_MAP]
