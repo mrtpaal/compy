@@ -390,3 +390,4 @@ def build(files: dict[str, list[dict]], raw_dir: Path, out_dir: Path) -> dict:
         log.info("Kirjutatud %s (%.1f MB)", target.name, target.stat().st_size / 1e6)
     con.close()
     return stats
+# proov2
