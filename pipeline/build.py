@@ -32,11 +32,21 @@ def norm(s: str) -> str:
 
 
 def map_element(name: str) -> str | None:
+    return map_element_full(name)[0]
+
+
+def map_element_full(name: str) -> tuple[str | None, bool, int]:
+    """-> (kanooniline väli, kas konsolideeritud, prioriteet). Väiksem prioriteet võidab,
+    kui samas aruandes on samale väljale mitu elementi (nt LaborExpense vs EmployeeExpense)."""
     key = norm(name)
+    konsol = key.endswith("consolidated")
+    if konsol:
+        key = key[: -len("consolidated")].rstrip("_")
     for canon, patterns in COMPILED_ELEMENT_MAP:
-        if any(p.search(key) for p in patterns):
-            return canon
-    return None
+        for prio, p in enumerate(patterns):
+            if p.search(key):
+                return canon, konsol, prio
+    return None, konsol, 0
 
 
 def prepare_csv(path: Path, workdir: Path) -> Path:
@@ -214,9 +224,10 @@ def build(files: dict[str, list[dict]], raw_dir: Path, out_dir: Path) -> dict:
         first = False
     elements = con.execute(
         "SELECT clean(element) e, count(*) n FROM src_el GROUP BY 1 ORDER BY 2 DESC").fetchall()
-    mapping = [(e, map_element(e)) for e, _ in elements if e]
-    con.execute("CREATE TABLE elmap (element VARCHAR, canon VARCHAR)")
-    con.executemany("INSERT INTO elmap VALUES (?, ?)", [m for m in mapping if m[1]])
+    full = {e: map_element_full(e) for e, _ in elements if e}
+    mapping = [(e, full[e][0]) for e, _ in elements if e]
+    con.execute("CREATE TABLE elmap (element VARCHAR, canon VARCHAR, konsol BOOLEAN, prio INTEGER)")
+    con.executemany("INSERT INTO elmap VALUES (?, ?, ?, ?)", [(e, *v) for e, v in full.items() if v[0]])
     freq = dict(elements)
     stats["kaardistatud_elemendid"] = {e: c for e, c in mapping if c}
     stats["kaardistamata_elemendid"] = [{"element": e, "ridu": freq[e]} for e, c in mapping if not c][:60]
@@ -233,8 +244,8 @@ def build(files: dict[str, list[dict]], raw_dir: Path, out_dir: Path) -> dict:
       SELECT report_id, canon, v, faili_aasta FROM (
         SELECT clean(s.report_id) AS report_id, m.canon, num(s.vaartus) AS v, s.faili_aasta,
           ROW_NUMBER() OVER (PARTITION BY clean(s.report_id), m.canon ORDER BY
-            (lower(coalesce(s.konsolideeritud, '')) IN ('true','1','jah','yes','t','j')) = {pref} DESC,
-            num(s.vaartus) IS NULL) AS rn
+            (m.konsol OR lower(coalesce(s.konsolideeritud, '')) IN ('true','1','jah','yes','t','j')) = {pref} DESC,
+            num(s.vaartus) IS NULL, m.prio) AS rn
         FROM src_el s JOIN elmap m ON clean(s.element) = m.element)
       WHERE rn = 1""")
     pivot = ",\n        ".join(f"max(v) FILTER (WHERE canon = '{f}') AS {f}" for f in CANONICAL_FIELDS)
@@ -390,4 +401,3 @@ def build(files: dict[str, list[dict]], raw_dir: Path, out_dir: Path) -> dict:
         log.info("Kirjutatud %s (%.1f MB)", target.name, target.stat().st_size / 1e6)
     con.close()
     return stats
-# proov2
